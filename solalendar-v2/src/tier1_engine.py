@@ -7,12 +7,8 @@ from lunar_python import Solar, Lunar
 
 class SolalendarTier1:
     """
-    Solalendar Core Engine v3.0 (Full Spec)
-    Implementation of Class A, B, C, D requirements.
-    - Class A: JDN, Absolute Coordinates
-    - Class B: Tropical (Geo), Sidereal (Geo), Heliocentric
-    - Class C: Lunar, Gan-Zhi, Sukuyokyo (27 Mansions)
-    - Class D: Mayan, Numerology
+    Solalendar Core Engine v4.1 (Feature Update)
+    Added: Layer 2 'The Pinnacles' (Life Chapters)
     """
 
     def __init__(self, name, year, month, day, hour, minute, lat=35.6895, lng=139.6917, tz_str="Asia/Tokyo"):
@@ -26,131 +22,158 @@ class SolalendarTier1:
         self.lng = lng
         self.tz_str = tz_str
         
-        # Datetime handling
+        # Datetime Setup
         local = pytz.timezone(tz_str)
         local_dt = local.localize(datetime.datetime(year, month, day, hour, minute))
         self.utc_dt = local_dt.astimezone(pytz.utc)
+        self.current_year = datetime.datetime.now().year
+        self.current_age = self.current_year - self.year
         
-        # Class A: JDN Calculation (UT)
-        self.jul_day_ut = swe.julday(year, month, day, hour + minute/60.0 - 9.0) # JST -> UT conversion approx
-        
-    # ---------------------------------------------------------
-    # Helper: Zodiac Mapper
-    # ---------------------------------------------------------
-    def _get_zodiac_sign(self, lon):
-        signs = ["Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo", "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"]
-        idx = int(lon // 30) % 12
-        return signs[idx]
+        # Layer 0: JDN Calculation
+        self.jul_day_ut = swe.julday(year, month, day, hour + minute/60.0 - 9.0)
 
     # ---------------------------------------------------------
-    # Class D: Numerology (LPN)
+    # Helper: Numerology Reducer
+    # ---------------------------------------------------------
+    def _reduce(self, n):
+        """Standard recursive reduction (11, 22, 33 preserved)"""
+        while n > 9 and n not in [11, 22, 33]:
+            n = sum(int(d) for d in str(n))
+        return n
+    
+    def _reduce_single(self, n):
+        """Force reduction to single digit (for Pinnacle calc base)"""
+        while n > 9:
+            n = sum(int(d) for d in str(n))
+        return n
+
+    # ---------------------------------------------------------
+    # Layer 1: BIOS (Numerology)
     # ---------------------------------------------------------
     def _calculate_lpn(self):
-        def reduce_to_lpn(num):
-            while num > 9 and num not in [11, 22, 33]:
-                num = sum(int(d) for d in str(num))
-            return num
-        sum_a = sum(int(d) for d in f"{self.year}{self.month}{self.day}")
-        lpn_a = reduce_to_lpn(sum_a)
-        sum_b = self.year + self.month + self.day
-        lpn_b = reduce_to_lpn(sum_b)
-        return lpn_b if lpn_b in [11, 22, 33] else lpn_a
+        # Sum of Y+M+D
+        total = self.year + self.month + self.day
+        lpn = self._reduce(total)
+        return lpn
 
     # ---------------------------------------------------------
-    # Class B: Western (Tropical / Sidereal / Helio)
+    # Layer 2: Infra (Cycles & Pinnacles)
     # ---------------------------------------------------------
-    def _get_planetary_data(self):
-        # 1. Tropical (Geo) - "Earthly OS"
-        subj = AstrologicalSubject(self.name, self.year, self.month, self.day, self.hour, self.minute, lat=self.lat, lng=self.lng, tz_str=self.tz_str, online=False)
+    def _get_infra_layer(self, lpn):
+        # 1. Planetary Cycles (Saturn/Jupiter)
+        saturn_cycle_count = int(self.current_age // 29.5) + 1
+        jupiter_phase = self.current_age % 12
         
-        tropical = {
+        # 2. The Pinnacles (Life Chapters)
+        # Base numbers (Single digit reduction required for calculation)
+        m_base = self._reduce_single(self.month)
+        d_base = self._reduce_single(self.day)
+        y_base = self._reduce_single(self.year)
+        
+        # Calculate 4 Pinnacles
+        pin1 = self._reduce(m_base + d_base)
+        pin2 = self._reduce(d_base + y_base)
+        pin3 = self._reduce(pin1 + pin2)
+        pin4 = self._reduce(m_base + y_base)
+        
+        # Calculate Timeline (Ages)
+        # 1st Pinnacle ends at (36 - LPN)
+        # If LPN is Master Number, reduce it for calculation (e.g. 11->2, 22->4)
+        lpn_single = self._reduce_single(lpn)
+        age_end_1 = 36 - lpn_single
+        age_end_2 = age_end_1 + 9
+        age_end_3 = age_end_2 + 9
+        
+        # Identify Current Stage
+        current_pin = 0
+        stage_name = ""
+        if self.current_age <= age_end_1:
+            current_pin = pin1
+            stage_name = "1st Pinnacle (Formation)"
+            range_str = f"Age 0 - {age_end_1}"
+        elif self.current_age <= age_end_2:
+            current_pin = pin2
+            stage_name = "2nd Pinnacle (Production)"
+            range_str = f"Age {age_end_1+1} - {age_end_2}"
+        elif self.current_age <= age_end_3:
+            current_pin = pin3
+            stage_name = "3rd Pinnacle (Maturation)"
+            range_str = f"Age {age_end_2+1} - {age_end_3}"
+        else:
+            current_pin = pin4
+            stage_name = "4th Pinnacle (Integration)"
+            range_str = f"Age {age_end_3+1}+"
+
+        return {
+            "saturn_cycle": f"Round {saturn_cycle_count}",
+            "jupiter_phase": f"Year {jupiter_phase}/12",
+            "pinnacle": {
+                "current_number": current_pin,
+                "current_stage": stage_name,
+                "period_range": range_str,
+                "all_pins": [pin1, pin2, pin3, pin4]
+            }
+        }
+
+    # ---------------------------------------------------------
+    # Layer 3 & 5: Env & Skin
+    # ---------------------------------------------------------
+    def _get_planetary_layers(self):
+        subj = AstrologicalSubject(self.name, self.year, self.month, self.day, self.hour, self.minute, lat=self.lat, lng=self.lng, tz_str=self.tz_str, online=False)
+        return {
             "Sun": {"sign": subj.sun.sign, "lon": subj.sun.position},
             "Moon": {"sign": subj.moon.sign, "lon": subj.moon.position},
-            "Mercury": {"sign": subj.mercury.sign, "lon": subj.mercury.position},
-            "Mars": {"sign": subj.mars.sign, "lon": subj.mars.position},
             "Ascendant": subj.first_house.sign
         }
 
-        # 2. Sidereal (Geo) - "Galactic/Soul OS"
-        swe.set_sid_mode(swe.SIDM_LAHIRI)
-        
-        sidereal = {}
-        for p_name, p_id in [("Sun", swe.SUN), ("Moon", swe.MOON), ("Mars", swe.MARS)]:
-            res = swe.calc_ut(self.jul_day_ut, p_id, swe.FLG_SIDEREAL)
-            lon = res[0][0]
-            sidereal[p_name] = {
-                "sign": self._get_zodiac_sign(lon),
-                "lon": round(lon, 2),
-                "nakshatra": int(lon * 27 / 360) + 1 
-            }
-
-        # 3. Heliocentric - "Purpose/Mission"
-        helio = {}
-        # Earth from Sun perspective
-        res_earth = swe.calc_ut(self.jul_day_ut, swe.EARTH, swe.FLG_HELCTR)
-        lon_earth = res_earth[0][0]
-        helio["Earth"] = {"sign": self._get_zodiac_sign(lon_earth), "lon": round(lon_earth, 2)}
-        
-        # Mars (Action) from Sun perspective
-        res_mars = swe.calc_ut(self.jul_day_ut, swe.MARS, swe.FLG_HELCTR)
-        lon_mars = res_mars[0][0]
-        helio["Mars"] = {"sign": self._get_zodiac_sign(lon_mars), "lon": round(lon_mars, 2)}
-
-        return tropical, sidereal, helio
-
     # ---------------------------------------------------------
-    # Class C: Eastern (Lunar / Gan-Zhi / Sukuyokyo)
+    # Layer 4: Runtime
     # ---------------------------------------------------------
-    def _get_eastern_data(self, moon_sidereal_lon):
-        # 1. Lunar / Gan-Zhi
+    def _get_runtime_layer(self):
         solar = Solar.fromYmd(self.year, self.month, self.day)
         lunar = solar.getLunar()
-        
-        # 2. Sukuyokyo (27 Mansions)
-        m_idx = int(moon_sidereal_lon * 27 / 360)
-        
         return {
             "eto_day": lunar.getDayInGanZhi(),
             "nayin": lunar.getDayNaYin(),
-            "lunar_date": f"{lunar.getYear()}年{lunar.getMonth()}月{lunar.getDay()}日",
-            "shuku": f"Moon Station {m_idx + 1}"
+            "lunar_date": f"{lunar.getMonth()}月{lunar.getDay()}日"
         }
-
-    # ---------------------------------------------------------
-    # Class D: Mayan
-    # ---------------------------------------------------------
-    def _get_mayan_data(self):
-        a = (14 - self.month) // 12
-        y = self.year + 4800 - a
-        m = self.month + 12 * a - 3
-        jdn = self.day + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
-        kin = (jdn - 584283) % 260 + 1
-        seals = ["Red Dragon", "White Wind", "Blue Night", "Yellow Seed", "Red Serpent", "White Worldbridger", "Blue Hand", "Yellow Star", "Red Moon", "White Dog", "Blue Monkey", "Yellow Human", "Red Skywalker", "White Wizard", "Blue Eagle", "Yellow Warrior", "Red Earth", "White Mirror", "Blue Storm", "Yellow Sun"]
-        tones = ["Magnetic (1)", "Lunar (2)", "Electric (3)", "Self-Existing (4)", "Overtone (5)", "Rhythmic (6)", "Resonant (7)", "Galactic (8)", "Solar (9)", "Planetary (10)", "Spectral (11)", "Crystal (12)", "Cosmic (13)"]
-        return {"kin": kin, "seal": seals[(kin-1)%20], "tone": tones[(kin-1)%13]}
 
     # ---------------------------------------------------------
     # MAIN ANALYZE
     # ---------------------------------------------------------
     def analyze(self):
         lpn = self._calculate_lpn()
-        trop, sid, helio = self._get_planetary_data()
-        east = self._get_eastern_data(sid['Moon']['lon'])
-        mayan = self._get_mayan_data()
+        infra = self._get_infra_layer(lpn)
+        planets = self._get_planetary_layers()
+        runtime = self._get_runtime_layer()
         
-        # Mapping Abbr to Full
-        z_map = {"Ari":"Aries", "Tau":"Taurus", "Gem":"Gemini", "Can":"Cancer", "Leo":"Leo", "Vir":"Virgo", "Lib":"Libra", "Sco":"Scorpio", "Sag":"Sagittarius", "Cap":"Capricorn", "Aqu":"Aquarius", "Pis":"Pisces"}
-        for planet in trop:
-            if isinstance(trop[planet], dict) and 'sign' in trop[planet]:
-                s = trop[planet]['sign']
-                trop[planet]['sign'] = z_map.get(s, s)
-
         return {
-            "meta": {"version": "Solalendar Tier1 v3.0 (Full Spec)", "subject": self.name},
-            "class_a_absolute": {"jdn": self.jul_day_ut},
-            "class_b_solar_earthly": trop,
-            "class_b_sidereal_soul": sid,
-            "class_b_helio_mission": helio,
-            "class_c_eastern": east,
-            "class_d_archetypal": {"mayan": mayan, "numerology": {"lpn": lpn}}
+            "meta": {"version": "Solalendar Tier1 v4.1", "type": "PSC_Decode"},
+            "layer_0_kernel": {
+                "desc": "The Absolute",
+                "jdn": self.jul_day_ut,
+                "vector": f"{self.lat}, {self.lng}"
+            },
+            "layer_1_bios": {
+                "desc": "Source Numerology",
+                "lpn": lpn
+            },
+            "layer_2_infra": {
+                "desc": "Social Cycles & Chapters",
+                "cycles": infra
+            },
+            "layer_3_env": {
+                "desc": "Display Environment",
+                "sun_sign": planets["Sun"]["sign"]
+            },
+            "layer_4_runtime": {
+                "desc": "System Clock",
+                "moon_sign": planets["Moon"]["sign"],
+                "eastern_root": runtime["eto_day"],
+                "texture": runtime["nayin"]
+            },
+            "layer_5_skin": {
+                "desc": "Interface",
+                "ascendant": planets["Ascendant"]
+            }
         }
